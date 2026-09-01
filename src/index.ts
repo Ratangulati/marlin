@@ -1,6 +1,13 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import fetch from "node-fetch";
+import {
+  FileChange,
+  shouldExcludeFile,
+  createReviewPrompt,
+  fetchWithRetry,
+  parseStructuredReview,
+  formatStructuredReview,
+} from "./utils";
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -13,49 +20,6 @@ interface GeminiResponse {
   error?: {
     message?: string;
   };
-}
-
-interface FileChange {
-  filename: string;
-  patch?: string;
-  status: string;
-  additions: number;
-  deletions: number;
-  changes: number;
-}
-
-// File types to exclude from review
-const EXCLUDED_FILE_PATTERNS = [
-  /\.lock$/,
-  /package-lock\.json$/,
-  /yarn\.lock$/,
-  /pnpm-lock\.yaml$/,
-  /\.min\.(js|css)$/,
-  /\.bundle\.(js|css)$/,
-  /node_modules/,
-  /\.git/,
-  /\.DS_Store$/,
-  /\.log$/,
-  /\.tmp$/,
-  /\.temp$/,
-];
-
-// Maximum file size to review (in characters)
-const MAX_FILE_SIZE = 50000;
-
-function shouldExcludeFile(filename: string, patch?: string): boolean {
-  // Check file patterns
-  if (EXCLUDED_FILE_PATTERNS.some(pattern => pattern.test(filename))) {
-    return true;
-  }
-  
-  // Check file size
-  if (patch && patch.length > MAX_FILE_SIZE) {
-    core.info(`Skipping large file: ${filename} (${patch.length} characters)`);
-    return true;
-  }
-  
-  return false;
 }
 
 function validateInputs(): { geminiKey: string; githubToken: string } {
@@ -73,72 +37,23 @@ function validateInputs(): { geminiKey: string; githubToken: string } {
   return { geminiKey, githubToken };
 }
 
-function createReviewPrompt(files: FileChange[], prTitle?: string, prBody?: string): string {
-  const fileCount = files.length;
-  const totalChanges = files.reduce((sum, file) => sum + file.changes, 0);
-  
-  let prompt = `You are an expert code reviewer with extensive experience in software development. Please review the following pull request changes and provide constructive, actionable feedback.
-
-**Pull Request Context:**
-- Title: ${prTitle || 'No title provided'}
-- Description: ${prBody || 'No description provided'}
-- Files changed: ${fileCount}
-- Total changes: ${totalChanges} lines
-
-**Review Guidelines:**
-1. Focus on code quality, security, performance, and maintainability
-2. Identify potential bugs, edge cases, and improvements
-3. Check for proper error handling and validation
-4. Ensure code follows best practices and conventions
-5. Suggest specific improvements with clear explanations
-6. Be constructive and professional in your feedback
-
-**Code Changes to Review:**
-
-`;
-
-  files.forEach((file, index) => {
-    if (file.patch) {
-      prompt += `**File ${index + 1}: ${file.filename}** (${file.status}, +${file.additions}/-${file.deletions})
-\`\`\`diff
-${file.patch}
-\`\`\`
-
-`;
-    }
-  });
-
-  prompt += `Please provide a comprehensive review covering:
-- Overall assessment of the changes
-- Specific issues or concerns
-- Suggestions for improvement
-- Security considerations (if any)
-- Performance implications (if any)
-
-Format your response in a clear, structured way that will be helpful for the developer.`;
-
-  return prompt;
-}
-
 async function getGeminiReview(prompt: string, apiKey: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
-  
+
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const response = await fetchWithRetry(
+      url,
+      JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3,
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 2048,
+          response_mime_type: "application/json",
         },
-      }),
-    });
+      })
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -220,6 +135,13 @@ async function run() {
     core.info("🧠 Getting AI review from Gemini...");
     const reviewText = await getGeminiReview(reviewPrompt, geminiKey);
 
+    // Parse the structured JSON response; fall back to the raw text if it doesn't parse.
+    const structuredReview = parseStructuredReview(reviewText);
+    if (!structuredReview) {
+      core.warning("Could not parse a structured JSON review from Gemini; posting the raw response instead.");
+    }
+    const reviewBody = structuredReview ? formatStructuredReview(structuredReview) : reviewText;
+
     // Create summary
     const summary = `**📊 Review Summary:**
 - Files reviewed: ${filesToReview.length}/${files.length}
@@ -234,7 +156,7 @@ async function run() {
       owner,
       repo,
       issue_number: prNumber,
-      body: `🤖 **AI Code Review**\n\n${summary}${reviewText}`,
+      body: `🤖 **AI Code Review**\n\n${summary}${reviewBody}`,
     });
 
     core.info("✅ Review posted successfully!");

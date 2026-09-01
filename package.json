@@ -6,7 +6,8 @@
     "build": "ncc build src/index.ts -o dist",
     "build:watch": "ncc build src/index.ts -o dist --watch",
     "clean": "rm -rf dist lib",
-    "all": "npm run clean && npm run build"
+    "all": "npm run clean && npm run build",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "Ratan Gulati",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@vercel/ncc": "^0.38.3",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11"
   }
 }
