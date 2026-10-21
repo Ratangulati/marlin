@@ -8,6 +8,7 @@ It's written in TypeScript and uses the GitHub REST API through Octokit (`@actio
 
 - **Reviews every PR automatically** on `opened`, `synchronize` (new commits), and `reopened`.
 - **Filters out noise** before calling the model: lock files, minified and bundled assets, `node_modules/`, the `.git/` directory, logs and temp files, files with no diff (binary files), and any file whose diff is over 50,000 characters.
+- **Keeps the prompt bounded**: if the remaining diffs add up to more than 200,000 characters, files that don't fit are skipped and the comment says how many.
 - **Asks Gemini for structured JSON**, with a severity, category, file, line, and message for each issue.
 - **Posts a comment grouped by severity**: Critical, then Warning, then Info.
 - **Falls back to raw text** if the model's response isn't valid JSON in the expected shape, so the PR still gets a review instead of an error.
@@ -22,7 +23,8 @@ pull_request event
 fetch changed files      octokit.paginate(pulls.listFiles), 100 per page
       │
       ▼
-filter files             shouldExcludeFile(): patterns, missing patch, size cap
+filter files             shouldExcludeFile(): patterns, missing patch, per-file size cap
+      │                      selectFilesWithinBudget(): 200k-character total budget
       │
       ▼
 build prompt             createReviewPrompt(): PR title/body + diffs + JSON schema
@@ -107,6 +109,7 @@ Other settings are constants in the code, so you change them by editing the sour
 | Max output tokens | `src/index.ts` | `8192` |
 | Excluded file patterns | `EXCLUDED_FILE_PATTERNS` in `src/utils.ts` | lock, minified, bundle, logs, etc. |
 | Per-file diff size cap | `MAX_FILE_SIZE` in `src/utils.ts` | 50,000 characters |
+| Total diff size budget | `MAX_TOTAL_PATCH_SIZE` in `src/utils.ts` | 200,000 characters (~50k tokens) |
 | Retries / initial backoff | `MAX_RETRIES`, `INITIAL_BACKOFF_MS` in `src/utils.ts` | 3 retries, 1000 ms (doubles each time) |
 
 The API key goes in the `x-goog-api-key` request header, not in the URL, so it can't leak into error messages or logs.
@@ -122,7 +125,7 @@ npx tsc         # type check (tsconfig sets noEmit)
 npm run build   # bundle src/index.ts into dist/ with ncc
 ```
 
-The tests cover file filtering (including the size-cap boundary), retry behavior (which statuses retry, how many attempts, the backoff, and that the key goes in a header), JSON parsing (valid input, code fences, missing fields, invalid values), and severity-grouped formatting. They don't make network calls: `fetchWithRetry` takes a `fetch` implementation as a parameter, so the tests pass in a `vi.fn()` mock instead of calling Gemini.
+The tests cover file filtering (including the size-cap boundary), the total size budget, retry behavior (which statuses retry, how many attempts, the exact 1000/2000/4000 ms backoff using Vitest fake timers, and that the key goes in a header), JSON parsing (valid input, code fences, missing fields, invalid values), and severity-grouped formatting. They don't make network calls: `fetchWithRetry` takes a `fetch` implementation as a parameter, so the tests pass in a `vi.fn()` mock instead of calling Gemini.
 
 `dist/` isn't committed. The composite action builds it fresh on every run, so the code that runs always matches the source.
 
@@ -134,7 +137,7 @@ PRs #1–5 are closed demo PRs that show Marlin reviewing real code. Their sampl
 
 ## Known limitations
 
-- **Very large PRs:** each file's diff is capped at 50,000 characters, but the total prompt isn't. A PR with many changed files can exceed the model's token limit.
+- **Very large PRs:** to stay within the size budget, files that don't fit are skipped, not reviewed. They're picked in GitHub's order, not by importance, so a big PR gets only a partial review.
 - **Duplicate comments:** every push to a PR posts a new comment instead of updating the previous one.
 - **No inline comments:** issues are listed in one PR comment, not attached to diff lines with the review API.
 - **Prompt injection:** the PR title, description, and diff go straight into the prompt, so a PR author can try to steer the review.
