@@ -227,6 +227,7 @@ export function sleep(ms: number): Promise<void> {
 export async function fetchWithRetry(
   url: string,
   body: string,
+  apiKey: string,
   fetchImpl: typeof fetch = fetch,
   maxRetries: number = MAX_RETRIES,
   initialDelayMs: number = INITIAL_BACKOFF_MS
@@ -238,7 +239,8 @@ export async function fetchWithRetry(
     try {
       const response = await fetchImpl(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // The key goes in a header, not the URL, so it can't leak into error messages or logs.
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body,
       });
 

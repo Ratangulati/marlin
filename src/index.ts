@@ -9,6 +9,9 @@ import {
   formatStructuredReview,
 } from "./utils";
 
+// gemini-2.0-flash-lite was shut down on 2026-06-01; see https://ai.google.dev/gemini-api/docs/deprecations
+const GEMINI_MODEL = "gemini-3.1-flash-lite";
+
 interface GeminiResponse {
   candidates?: Array<{
     content?: {
@@ -38,7 +41,7 @@ function validateInputs(): { geminiKey: string; githubToken: string } {
 }
 
 async function getGeminiReview(prompt: string, apiKey: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
   try {
     const response = await fetchWithRetry(
@@ -46,13 +49,11 @@ async function getGeminiReview(prompt: string, apiKey: string): Promise<string> 
       JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.3,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 2048,
-          response_mime_type: "application/json",
+          maxOutputTokens: 8192,
+          responseMimeType: "application/json",
         },
-      })
+      }),
+      apiKey
     );
 
     if (!response.ok) {

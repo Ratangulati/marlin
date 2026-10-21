@@ -82,7 +82,7 @@ describe("fetchWithRetry", () => {
   it("returns immediately on a successful response, without retrying", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(mockResponse(200, true));
 
-    const response = await fetchWithRetry("https://example.com", "{}", fetchImpl, 3, 1);
+    const response = await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 1);
 
     expect(response.status).toBe(200);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -91,7 +91,7 @@ describe("fetchWithRetry", () => {
   it("does not retry on a 4xx response (e.g. bad API key)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(mockResponse(401, false));
 
-    const response = await fetchWithRetry("https://example.com", "{}", fetchImpl, 3, 1);
+    const response = await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 1);
 
     expect(response.status).toBe(401);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -100,7 +100,7 @@ describe("fetchWithRetry", () => {
   it("retries on a 5xx response up to maxRetries, then returns the last response", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(mockResponse(503, false));
 
-    const response = await fetchWithRetry("https://example.com", "{}", fetchImpl, 3, 1);
+    const response = await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 1);
 
     expect(response.status).toBe(503);
     expect(fetchImpl).toHaveBeenCalledTimes(4); // 1 initial attempt + 3 retries
@@ -113,7 +113,7 @@ describe("fetchWithRetry", () => {
       .mockRejectedValueOnce(new Error("ECONNRESET"))
       .mockResolvedValueOnce(mockResponse(200, true));
 
-    const response = await fetchWithRetry("https://example.com", "{}", fetchImpl, 3, 1);
+    const response = await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 1);
 
     expect(response.status).toBe(200);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
@@ -123,7 +123,7 @@ describe("fetchWithRetry", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("ECONNRESET"));
 
     await expect(
-      fetchWithRetry("https://example.com", "{}", fetchImpl, 3, 1)
+      fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 1)
     ).rejects.toThrow("ECONNRESET");
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
@@ -132,11 +132,21 @@ describe("fetchWithRetry", () => {
     const fetchImpl = vi.fn().mockResolvedValue(mockResponse(503, false));
 
     const start = Date.now();
-    await fetchWithRetry("https://example.com", "{}", fetchImpl, 3, 10);
+    await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 10);
     const elapsed = Date.now() - start;
 
     // delays are 10ms, 20ms, 40ms => at least 70ms total; allow scheduling jitter
     expect(elapsed).toBeGreaterThanOrEqual(60);
+  });
+
+  it("sends the API key in a header, not in the URL", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(mockResponse(200, true));
+
+    await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 1);
+
+    const [calledUrl, init] = fetchImpl.mock.calls[0];
+    expect(calledUrl).toBe("https://example.com");
+    expect(init.headers["x-goog-api-key"]).toBe("test-key");
   });
 });
 
