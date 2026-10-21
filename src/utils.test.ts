@@ -155,15 +155,41 @@ describe("fetchWithRetry", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
-  it("backs off exponentially between retries", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(mockResponse(503, false));
+  it("backs off exponentially between retries: 1000ms, 2000ms, 4000ms", async () => {
+    // Fake timers let the test step through the real default delays instantly.
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn().mockResolvedValue(mockResponse(503, false));
 
-    const start = Date.now();
-    await fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl, 3, 10);
-    const elapsed = Date.now() - start;
+      // Uses the default MAX_RETRIES (3) and INITIAL_BACKOFF_MS (1000).
+      const promise = fetchWithRetry("https://example.com", "{}", "test-key", fetchImpl);
 
-    // delays are 10ms, 20ms, 40ms => at least 70ms total; allow scheduling jitter
-    expect(elapsed).toBeGreaterThanOrEqual(60);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+      // First retry waits 1000ms: nothing happens at 999ms, it fires at 1000ms.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+      // Second retry waits 2000ms.
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+
+      // Third retry waits 4000ms.
+      await vi.advanceTimersByTimeAsync(3999);
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(4);
+
+      const response = await promise;
+      expect(response.status).toBe(503);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends the API key in a header, not in the URL", async () => {
