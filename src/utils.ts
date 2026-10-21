@@ -49,6 +49,32 @@ export function shouldExcludeFile(filename: string, patch?: string): boolean {
   return false;
 }
 
+// Cap on the combined size of all diffs sent in one prompt (~50k tokens).
+// The per-file cap alone doesn't stop a PR with many files from blowing the token limit.
+export const MAX_TOTAL_PATCH_SIZE = 200000;
+
+// Keeps files in order until adding the next one would go over the budget.
+// Files that don't fit are skipped; a smaller file later in the list can still fit.
+export function selectFilesWithinBudget(
+  files: FileChange[],
+  maxTotalSize: number = MAX_TOTAL_PATCH_SIZE
+): FileChange[] {
+  const selected: FileChange[] = [];
+  let totalSize = 0;
+
+  for (const file of files) {
+    const size = file.patch?.length ?? 0;
+    if (totalSize + size > maxTotalSize) {
+      core.info(`Skipping ${file.filename}: total diff size would exceed ${maxTotalSize} characters`);
+      continue;
+    }
+    selected.push(file);
+    totalSize += size;
+  }
+
+  return selected;
+}
+
 export function createReviewPrompt(files: FileChange[], prTitle?: string, prBody?: string): string {
   const fileCount = files.length;
   const totalChanges = files.reduce((sum, file) => sum + file.changes, 0);

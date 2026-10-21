@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
   shouldExcludeFile,
+  selectFilesWithinBudget,
   createReviewPrompt,
   fetchWithRetry,
   parseStructuredReview,
@@ -118,10 +119,15 @@ async function run() {
       per_page: 100,
     });
 
-    // Filter files for review
-    const filesToReview = files.filter(file => 
+    // Filter files for review, then keep the total prompt under the size budget
+    const filteredFiles = files.filter(file =>
       !shouldExcludeFile(file.filename, file.patch)
     );
+    const filesToReview = selectFilesWithinBudget(filteredFiles);
+    const skippedForBudget = filteredFiles.length - filesToReview.length;
+    if (skippedForBudget > 0) {
+      core.warning(`Skipped ${skippedForBudget} file(s) to keep the prompt within the size budget`);
+    }
 
     core.info(`📊 Found ${files.length} changed files, reviewing ${filesToReview.length} files`);
 
@@ -148,8 +154,8 @@ async function run() {
     const summary = `**📊 Review Summary:**
 - Files reviewed: ${filesToReview.length}/${files.length}
 - Total changes: ${filesToReview.reduce((sum, file) => sum + file.changes, 0)} lines
-- Files excluded: ${files.length - filesToReview.length} (large files, lock files, etc.)
-
+- Files excluded: ${files.length - filteredFiles.length} (large files, lock files, etc.)
+${skippedForBudget > 0 ? `- Files skipped to fit the prompt size budget: ${skippedForBudget}\n` : ""}
 `;
 
     // Post comment on PR

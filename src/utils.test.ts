@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   shouldExcludeFile,
   MAX_FILE_SIZE,
+  selectFilesWithinBudget,
   isRetryableStatus,
   fetchWithRetry,
   parseStructuredReview,
@@ -55,6 +56,25 @@ describe("shouldExcludeFile", () => {
 
   it("excludes a file with no patch (e.g. binary files)", () => {
     expect(shouldExcludeFile("logo.png", undefined)).toBe(true);
+  });
+});
+
+describe("selectFilesWithinBudget", () => {
+  function file(filename: string, patchSize: number) {
+    return { filename, patch: "x".repeat(patchSize), status: "modified", additions: 1, deletions: 0, changes: 1 };
+  }
+
+  it("keeps every file when the total is within the budget", () => {
+    const files = [file("a.ts", 40), file("b.ts", 60)];
+
+    expect(selectFilesWithinBudget(files, 100).map(f => f.filename)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("skips a file that would push the total over the budget", () => {
+    const files = [file("a.ts", 60), file("b.ts", 50), file("c.ts", 30)];
+
+    // a (60) fits, b would make 110 so it's skipped, c makes 90 so it fits
+    expect(selectFilesWithinBudget(files, 100).map(f => f.filename)).toEqual(["a.ts", "c.ts"]);
   });
 });
 
