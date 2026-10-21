@@ -19,7 +19,7 @@ export const EXCLUDED_FILE_PATTERNS = [
   /\.min\.(js|css)$/,
   /\.bundle\.(js|css)$/,
   /node_modules/,
-  /\.git/,
+  /(^|\/)\.git\//, // the .git/ directory only, not .github/ or .gitignore
   /\.DS_Store$/,
   /\.log$/,
   /\.tmp$/,
@@ -34,8 +34,14 @@ export function shouldExcludeFile(filename: string, patch?: string): boolean {
     return true;
   }
 
+  // GitHub omits the patch for binary files and diffs too large to display,
+  // so there is nothing to send to the model.
+  if (!patch) {
+    return true;
+  }
+
   // Check file size
-  if (patch && patch.length > MAX_FILE_SIZE) {
+  if (patch.length > MAX_FILE_SIZE) {
     core.info(`Skipping large file: ${filename} (${patch.length} characters)`);
     return true;
   }

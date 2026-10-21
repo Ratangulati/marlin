@@ -9,31 +9,33 @@ import {
 } from "./utils";
 
 describe("shouldExcludeFile", () => {
+  const patch = "@@ -1 +1 @@\n-a\n+b";
+
   it("excludes lock files", () => {
-    expect(shouldExcludeFile("package-lock.json")).toBe(true);
-    expect(shouldExcludeFile("yarn.lock")).toBe(true);
-    expect(shouldExcludeFile("pnpm-lock.yaml")).toBe(true);
-    expect(shouldExcludeFile("some-tool.lock")).toBe(true);
+    expect(shouldExcludeFile("package-lock.json", patch)).toBe(true);
+    expect(shouldExcludeFile("yarn.lock", patch)).toBe(true);
+    expect(shouldExcludeFile("pnpm-lock.yaml", patch)).toBe(true);
+    expect(shouldExcludeFile("some-tool.lock", patch)).toBe(true);
   });
 
   it("excludes minified and bundled assets", () => {
-    expect(shouldExcludeFile("app.min.js")).toBe(true);
-    expect(shouldExcludeFile("styles.min.css")).toBe(true);
-    expect(shouldExcludeFile("app.bundle.js")).toBe(true);
+    expect(shouldExcludeFile("app.min.js", patch)).toBe(true);
+    expect(shouldExcludeFile("styles.min.css", patch)).toBe(true);
+    expect(shouldExcludeFile("app.bundle.js", patch)).toBe(true);
   });
 
   it("excludes node_modules, .git, and system/temp files", () => {
-    expect(shouldExcludeFile("node_modules/foo/index.js")).toBe(true);
-    expect(shouldExcludeFile(".git/config")).toBe(true);
-    expect(shouldExcludeFile(".DS_Store")).toBe(true);
-    expect(shouldExcludeFile("debug.log")).toBe(true);
-    expect(shouldExcludeFile("cache.tmp")).toBe(true);
-    expect(shouldExcludeFile("cache.temp")).toBe(true);
+    expect(shouldExcludeFile("node_modules/foo/index.js", patch)).toBe(true);
+    expect(shouldExcludeFile(".git/config", patch)).toBe(true);
+    expect(shouldExcludeFile(".DS_Store", patch)).toBe(true);
+    expect(shouldExcludeFile("debug.log", patch)).toBe(true);
+    expect(shouldExcludeFile("cache.tmp", patch)).toBe(true);
+    expect(shouldExcludeFile("cache.temp", patch)).toBe(true);
   });
 
   it("does not exclude regular source files", () => {
-    expect(shouldExcludeFile("src/index.ts")).toBe(false);
-    expect(shouldExcludeFile("README.md")).toBe(false);
+    expect(shouldExcludeFile("src/index.ts", patch)).toBe(false);
+    expect(shouldExcludeFile("README.md", patch)).toBe(false);
   });
 
   it("excludes a file whose patch exceeds the size cap", () => {
@@ -46,8 +48,13 @@ describe("shouldExcludeFile", () => {
     expect(shouldExcludeFile("src/big.ts", exactPatch)).toBe(false);
   });
 
-  it("does not exclude a file with no patch (e.g. binary or renamed files)", () => {
-    expect(shouldExcludeFile("src/ok.ts", undefined)).toBe(false);
+  it("does not exclude .github/ workflow files or .gitignore", () => {
+    expect(shouldExcludeFile(".github/workflows/ci.yml", patch)).toBe(false);
+    expect(shouldExcludeFile(".gitignore", patch)).toBe(false);
+  });
+
+  it("excludes a file with no patch (e.g. binary files)", () => {
+    expect(shouldExcludeFile("logo.png", undefined)).toBe(true);
   });
 });
 
