@@ -20,3 +20,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Personal interview prep, not part of the project
+INTERVIEW_NOTES.md
