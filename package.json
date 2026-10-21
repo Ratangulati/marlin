@@ -1,18 +1,16 @@
 {
-  "name": "ai-code-review-bot",
+  "name": "marlin",
   "version": "1.0.0",
-  "main": "index.js",
   "scripts": {
     "build": "ncc build src/index.ts -o dist",
     "build:watch": "ncc build src/index.ts -o dist --watch",
-    "clean": "rm -rf dist lib",
+    "clean": "rm -rf dist",
     "all": "npm run clean && npm run build",
     "test": "vitest run"
   },
-  "keywords": [],
   "author": "Ratan Gulati",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
+  "description": "GitHub Action that reviews pull requests with Google Gemini and posts severity-grouped comments",
   "dependencies": {
     "@actions/core": "^1.11.1",
     "@actions/github": "^6.0.1",
@@ -23,5 +21,9 @@
     "@vercel/ncc": "^0.38.3",
     "typescript": "^5.9.2",
     "vitest": "^4.1.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ratangulati/marlin.git"
   }
 }

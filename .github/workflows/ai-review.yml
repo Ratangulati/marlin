@@ -1,4 +1,4 @@
-name: AI Code Review
+name: Marlin AI Review
 
 on:
   pull_request:
@@ -11,12 +11,12 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
-      - name: Run CodeBuddy AI
+
+      - name: Run Marlin
         uses: ./
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}

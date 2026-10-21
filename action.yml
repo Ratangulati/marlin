@@ -1,6 +1,6 @@
-name: 'CodeBuddy AI'
-description: 'Your friendly AI code reviewer powered by Google Gemini'
-author: 'Your Name'
+name: 'Marlin'
+description: 'AI pull request reviewer powered by Google Gemini'
+author: 'Ratan Gulati'
 branding:
   icon: 'check-circle'
   color: 'blue'
@@ -16,21 +16,21 @@ runs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
-    
+        node-version: '24'
+
     - name: Install dependencies
       shell: bash
       run: |
         cd ${{ github.action_path }}
-        npm install
-    
+        npm ci
+
     - name: Build action
       shell: bash
       run: |
         cd ${{ github.action_path }}
         npm run build
-    
-    - name: Run CodeBuddy AI
+
+    - name: Run Marlin
       shell: bash
       env:
         INPUT_GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
