@@ -1,5 +1,4 @@
 import * as core from "@actions/core";
-import fetch from "node-fetch";
 
 export interface FileChange {
   filename: string;
@@ -263,9 +262,9 @@ export async function fetchWithRetry(
   fetchImpl: typeof fetch = fetch,
   maxRetries: number = MAX_RETRIES,
   initialDelayMs: number = INITIAL_BACKOFF_MS
-): Promise<Awaited<ReturnType<typeof fetch>>> {
+): Promise<Response> {
   let lastError: Error | undefined;
-  let lastResponse: Awaited<ReturnType<typeof fetch>> | undefined;
+  let lastResponse: Response | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {

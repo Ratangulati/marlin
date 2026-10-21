@@ -13,8 +13,7 @@
   "description": "GitHub Action that reviews pull requests with Google Gemini and posts severity-grouped comments",
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "@actions/github": "^6.0.1",
-    "node-fetch": "^3.3.2"
+    "@actions/github": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
