@@ -1,7 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
-  FileChange,
   shouldExcludeFile,
   createReviewPrompt,
   fetchWithRetry,
@@ -85,7 +84,7 @@ async function getGeminiReview(prompt: string, apiKey: string): Promise<string> 
 
 async function run() {
   try {
-    core.info("🤖 Starting AI Code Review Bot...");
+    core.info("🤖 Starting Marlin review...");
 
     // Validate inputs
     const { geminiKey, githubToken } = validateInputs();
@@ -159,12 +158,12 @@ async function run() {
       owner,
       repo,
       issue_number: prNumber,
-      body: `🤖 **AI Code Review**\n\n${summary}${reviewBody}`,
+      body: `🤖 **Marlin AI Code Review**\n\n${summary}${reviewBody}`,
     });
 
     core.info("✅ Review posted successfully!");
-  } catch (error: any) {
-    const errorMessage = error.message || "Unknown error occurred";
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     core.error(`❌ Error: ${errorMessage}`);
     core.setFailed(errorMessage);
   }
