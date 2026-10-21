@@ -111,10 +111,12 @@ async function run() {
 
     // Get list of changed files
     core.info("📁 Fetching changed files...");
-    const { data: files } = await octokit.rest.pulls.listFiles({
+    // listFiles returns 30 files per page by default; paginate to get all of them.
+    const files = await octokit.paginate(octokit.rest.pulls.listFiles, {
       owner,
       repo,
       pull_number: prNumber,
+      per_page: 100,
     });
 
     // Filter files for review
