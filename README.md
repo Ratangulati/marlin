@@ -1,179 +1,148 @@
-# 🤖 AI Code Review Bot (Gemini)
+# Marlin
 
-A GitHub Action that automatically reviews pull requests using Google's Gemini AI API. This bot provides intelligent, constructive feedback on code changes to help improve code quality and catch potential issues early.
+Marlin is a GitHub Action that reviews pull requests with Google's Gemini API. When a PR is opened or updated, it reads the diff, asks Gemini for a structured review, and posts a single comment with the issues grouped by severity.
 
-## ✨ Features
+It's written in TypeScript and uses the GitHub REST API through Octokit (`@actions/github`).
 
-- **Intelligent Code Review**: Uses Google's Gemini 1.5 Flash model for comprehensive code analysis
-- **Smart File Filtering**: Automatically excludes lock files, large files, and other non-reviewable content
-- **Detailed Feedback**: Provides structured feedback covering code quality, security, performance, and best practices
-- **Rich Context**: Includes PR title, description, and change statistics in the review
-- **Professional Formatting**: Well-formatted comments with emojis and clear structure
-- **Error Handling**: Robust error handling with detailed logging
-- **Configurable**: Easy to customize and extend
+## What it does
 
-## 🚀 Quick Start
+- **Reviews every PR automatically** on `opened`, `synchronize` (new commits), and `reopened`.
+- **Filters out noise** before calling the model: lock files, minified and bundled assets, `node_modules/`, the `.git/` directory, logs and temp files, files with no diff (binary files), and any file whose diff is over 50,000 characters.
+- **Asks Gemini for structured JSON**, with a severity, category, file, line, and message for each issue.
+- **Posts a comment grouped by severity**: Critical, then Warning, then Info.
+- **Falls back to raw text** if the model's response isn't valid JSON in the expected shape, so the PR still gets a review instead of an error.
+- **Retries the Gemini call** with exponential backoff on network errors and 5xx responses. It doesn't retry 4xx errors, because a bad API key won't fix itself.
 
-### 1. Get a Gemini API Key
+## How it works
 
-1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Copy the key for later use
+```
+pull_request event
+      │
+      ▼
+fetch changed files      octokit.paginate(pulls.listFiles), 100 per page
+      │
+      ▼
+filter files             shouldExcludeFile(): patterns, missing patch, size cap
+      │
+      ▼
+build prompt             createReviewPrompt(): PR title/body + diffs + JSON schema
+      │
+      ▼
+call Gemini              fetchWithRetry(): up to 3 retries, 1s → 2s → 4s
+      │
+      ▼
+parse JSON               parseStructuredReview(): validates every field
+      │
+      ├── valid ───────► formatStructuredReview(): grouped markdown
+      │
+      └── invalid ─────► raw model text (with a warning in the Action log)
+      │
+      ▼
+post one PR comment      octokit.rest.issues.createComment
+```
 
-### 2. Set up the GitHub Action
+| File | Responsibility |
+|---|---|
+| `src/index.ts` | Entry point: reads inputs, talks to GitHub and Gemini, posts the comment |
+| `src/utils.ts` | Pure logic with no GitHub Actions side effects: filtering, prompt building, retry, JSON parsing and formatting |
+| `src/utils.test.ts` | Vitest suite for everything in `utils.ts` |
+| `action.yml` | Composite action: sets up Node 24, runs `npm ci` and `npm run build`, then runs `dist/index.js` |
 
-Create a `.github/workflows/ai-review.yml` file in your repository:
+## Example comment
+
+```
+🤖 Marlin AI Code Review
+
+📊 Review Summary:
+- Files reviewed: 2/3
+- Total changes: 41 lines
+- Files excluded: 1 (large files, lock files, etc.)
+
+The change adds a user lookup endpoint, but the query is built from raw input.
+
+### 🔴 Critical (1)
+- `src/users.ts:14` [security] User input is concatenated into a SQL query; use a parameterized query.
+
+### 🟡 Warning (1)
+- `src/users.ts:22` [bug] The database error is caught and ignored, so the caller gets undefined.
+```
+
+## Setup
+
+1. **Get a Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey).
+2. **Add it as a repository secret** named `GEMINI_API_KEY` (Settings → Secrets and variables → Actions → New repository secret).
+3. **Add a workflow** at `.github/workflows/marlin.yml`:
 
 ```yaml
-name: AI Code Review
+name: Marlin AI Review
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  ai-review:
+  review:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
-      - name: AI Code Review
-        uses: your-username/ai-code-review-bot@main
+      - name: Run Marlin
+        uses: Ratangulati/marlin@main
         with:
           gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
 ```
 
-### 3. Add the API Key as a Secret
+## Configuration
 
-1. Go to your repository's **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Name: `GEMINI_API_KEY`
-4. Value: Your Gemini API key from step 1
+| Input | Required | Description |
+|---|---|---|
+| `gemini_api_key` | Yes | Gemini API key. Pass it from a secret; never commit it. |
 
-## 📋 Usage
+Other settings are constants in the code, so you change them by editing the source:
 
-The action will automatically run on:
-- New pull requests (`opened`)
-- New commits to existing PRs (`synchronize`)
-- Reopened pull requests (`reopened`)
+| Setting | Where | Value |
+|---|---|---|
+| Model | `GEMINI_MODEL` in `src/index.ts` | `gemini-3.1-flash-lite` |
+| Max output tokens | `src/index.ts` | `8192` |
+| Excluded file patterns | `EXCLUDED_FILE_PATTERNS` in `src/utils.ts` | lock, minified, bundle, logs, etc. |
+| Per-file diff size cap | `MAX_FILE_SIZE` in `src/utils.ts` | 50,000 characters |
+| Retries / initial backoff | `MAX_RETRIES`, `INITIAL_BACKOFF_MS` in `src/utils.ts` | 3 retries, 1000 ms (doubles each time) |
 
-### Inputs
+The API key goes in the `x-goog-api-key` request header, not in the URL, so it can't leak into error messages or logs.
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `gemini_api_key` | Your Gemini API key | No* | - |
+## Development and testing
 
-*Required if `GEMINI_API_KEY` environment variable is not set
+Requires Node.js 24+.
 
-### Example Output
-
-The bot will post a comment like this on your PR:
-
-```
-🤖 AI Code Review
-
-📊 Review Summary:
-- Files reviewed: 3/5
-- Total changes: 45 lines
-- Files excluded: 2 (large files, lock files, etc.)
-
-## Overall Assessment
-The changes look good overall with some minor improvements needed...
-
-## Specific Issues
-1. **Line 23**: Consider adding input validation...
-2. **Line 45**: This function could benefit from error handling...
-
-## Suggestions for Improvement
-- Add JSDoc comments for better documentation
-- Consider extracting the validation logic into a separate function
-- Add unit tests for the new functionality
-
-## Security Considerations
-- No security issues detected
-- Input sanitization looks appropriate
-
-## Performance Implications
-- The new caching mechanism should improve performance
-- Consider memoization for expensive calculations
-```
-
-## 🔧 Configuration
-
-### File Filtering
-
-The bot automatically excludes certain file types from review:
-
-- Lock files: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
-- Minified files: `*.min.js`, `*.min.css`
-- Bundle files: `*.bundle.js`, `*.bundle.css`
-- System files: `.DS_Store`, `.log`, `.tmp`, `.temp`
-- Large files: Files larger than 50,000 characters
-
-### Customization
-
-You can customize the bot by modifying the source code:
-
-1. **Review Prompt**: Edit the `createReviewPrompt` function to change how the AI analyzes code
-2. **File Filtering**: Modify `EXCLUDED_FILE_PATTERNS` to include/exclude different file types
-3. **File Size Limit**: Change `MAX_FILE_SIZE` to adjust the maximum file size for review
-4. **AI Model**: Switch to a different Gemini model by changing the API endpoint
-
-## 🛠️ Development
-
-### Prerequisites
-
-- Node.js 20+
-- npm or yarn
-- TypeScript
-
-### Setup
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/ai-code-review-bot.git
-cd ai-code-review-bot
+npm ci          # install dependencies
+npm test        # run the Vitest suite
+npx tsc         # type check (tsconfig sets noEmit)
+npm run build   # bundle src/index.ts into dist/ with ncc
 ```
 
-2. Install dependencies:
-```bash
-npm install
-```
+The tests cover file filtering (including the size-cap boundary), retry behavior (which statuses retry, how many attempts, the backoff, and that the key goes in a header), JSON parsing (valid input, code fences, missing fields, invalid values), and severity-grouped formatting. They don't make network calls: `fetchWithRetry` takes a `fetch` implementation as a parameter, so the tests pass in a `vi.fn()` mock instead of calling Gemini.
 
-3. Build the project:
-```bash
-npm run build
-```
+`dist/` isn't committed. The composite action builds it fresh on every run, so the code that runs always matches the source.
 
-### Scripts
+To run the workflow locally with [act](https://github.com/nektos/act), put `GEMINI_API_KEY=...` in a git-ignored `.env` file. `.actrc` already passes it as a secret file.
 
-- `npm run build` - Build the TypeScript code and bundle with ncc
-- `npm run build:watch` - Build in watch mode for development
-- `npm run clean` - Remove the dist directory
+### Demo PRs
 
-### Project Structure
+PRs #1–5 are closed demo PRs that show Marlin reviewing real code. Their sample files **intentionally contain fake credentials** (for example `apiKey: "sk-1234567890abcdef"`) and other planted bugs as test input for the reviewer. None of them are real secrets.
 
-```
-├── src/
-│   └── index.ts          # Main action code
-├── dist/                 # Built files (generated)
-├── action.yml            # GitHub Action metadata
-├── package.json          # Dependencies and scripts
-├── tsconfig.json         # TypeScript configuration
-└── README.md            # This file
-```
+## Known limitations
 
-## 🤝 Contributing
+- **Very large PRs:** each file's diff is capped at 50,000 characters, but the total prompt isn't. A PR with many changed files can exceed the model's token limit.
+- **Duplicate comments:** every push to a PR posts a new comment instead of updating the previous one.
+- **No inline comments:** issues are listed in one PR comment, not attached to diff lines with the review API.
+- **Prompt injection:** the PR title, description, and diff go straight into the prompt, so a PR author can try to steer the review.
+- **False positives:** the model sees only the diff, not the rest of the codebase, so it can flag things that are handled elsewhere.
+- **No runtime context:** it can't see test results, production behavior, or how the code is actually used.
+- **Forked PRs:** GitHub doesn't give `pull_request` workflows from forks access to secrets, so Marlin can't run on them.
+- **429 rate limits aren't retried:** only network errors and 5xx responses are retried.
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes
-4. Build and test: `npm run build`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-<!-- 
-## 📝 License
+## License
 
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details. -->
+MIT. See [LICENSE](LICENSE).
